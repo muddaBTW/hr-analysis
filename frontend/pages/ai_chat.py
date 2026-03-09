@@ -1,5 +1,9 @@
 import streamlit as st
 import requests
+import os
+
+# Use environment variable for deployment, fallback to local for development
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 st.title('Ai Chat Assistant')
 
@@ -24,7 +28,7 @@ if st.button('Ask'):
                 payload['api_key'] = user_api_key.strip()
                 
             response = requests.post(
-                "http://127.0.0.1:8000/ask",
+                f"{BACKEND_URL}/ask",
                 json=payload
             )
 

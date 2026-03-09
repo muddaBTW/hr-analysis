@@ -4,7 +4,11 @@ import requests
 st.set_page_config(layout="wide")
 st.title("Employee Attrition Prediction")
 
-API_URL = "http://127.0.0.1:8000/predict"
+import os
+
+# Use environment variable for deployment, fallback to local for development
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+API_URL = f"{BACKEND_URL}/predict"
 
 st.sidebar.header("Employee Information")
 
