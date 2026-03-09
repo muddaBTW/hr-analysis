@@ -38,5 +38,6 @@ if st.button('Ask'):
             st.subheader('Ai Response')
             st.write(answer)
 
-        except:
-            st.error('Backend not running')
+        except Exception as e:
+            st.error(f"Error connecting to backend: {str(e)}")
+            st.info(f"Backend URL: {BACKEND_URL}")
