@@ -14,7 +14,7 @@ INDEX_PATH = "faiss_index"
 def get_vectorstore():
     global _vectorstore, _embeddings
     if _vectorstore is None:
-        from langchain_community.embeddings import HuggingFaceEmbeddings
+        from langchain_huggingface import HuggingFaceEmbeddings
         from langchain_community.vectorstores import FAISS
         
         # Check if local index exists
