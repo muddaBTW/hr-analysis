@@ -1,12 +1,8 @@
 import os
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_text_splitters import CharacterTextSplitter
-from langchain_core.documents import Document
-from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 
 # Load .env from project root
+# (On Render, this won't matter as we use real Env Vars)
 base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(os.path.join(base_dir, '.env'))
 
@@ -18,6 +14,9 @@ INDEX_PATH = "faiss_index"
 def get_vectorstore():
     global _vectorstore, _embeddings
     if _vectorstore is None:
+        from langchain_community.embeddings import HuggingFaceEmbeddings
+        from langchain_community.vectorstores import FAISS
+        
         # Check if local index exists
         _embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         
@@ -31,6 +30,9 @@ def get_vectorstore():
             print("RAG index loaded.")
         else:
             print("Index not found. Initializing RAG vectorstore from knowledge.md...")
+            from langchain_text_splitters import CharacterTextSplitter
+            from langchain_core.documents import Document
+            
             # load knowledge
             with open('knowledge.md', 'r', encoding='utf-8') as f:
                 text = f.read()
@@ -60,6 +62,8 @@ def ask_question(query: str, api_key: str = None):
     if not groq_api_key:
         return "Error: No Groq API Key provided. Please enter your API Key in the sidebar."
 
+    from langchain_groq import ChatGroq
+    
     # Initialize LLM dynamically per request
     try:
         llm = ChatGroq(
