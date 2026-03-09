@@ -1,23 +1,39 @@
 from fastapi import FastAPI
 import os
+import threading
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+# Define a lifespan event to trigger background loading
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # This runs in the background as soon as the server starts
+    def load_everything():
+        try:
+            print("--- Proactive Background Loading Started ---")
+            from services.model_service import get_model_artifacts
+            from services.rag_service import get_vectorstore
+            get_model_artifacts() # Pre-load ML model
+            get_vectorstore()    # Pre-load RAG index
+            print("--- Proactive Background Loading Complete ---")
+        except Exception as e:
+            print(f"Background loading failed (will retry on first request): {e}")
+
+    # Start the thread
+    thread = threading.Thread(target=load_everything, daemon=True)
+    thread.start()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get('/')
 def home():
-    print("Health check ping received at /")
     return {'message': 'Backend Running', 'status': 'healthy'}
 
 @app.post('/predict')
 def predict(data: dict):
-    # Lazy import inside the route to keep startup instant
     from services.model_service import predict_employee
-    from schema.prediction_schema import Employee
-    
-    # Validate manually or just pass features
     features = data.get("features", {})
     probability = predict_employee(features)
-
     return {
         'probability': probability,
         'risk': 'High' if probability > 0.5 else 'Low'
@@ -25,14 +41,10 @@ def predict(data: dict):
 
 @app.post('/ask')
 def ask(data: dict):
-    # Lazy import inside the route
     from services.rag_service import ask_question
-    
     query = data.get("query", "")
     api_key = data.get("api_key")
-    
     answer = ask_question(query, api_key)
-
     return {
         'answer': answer
     }
