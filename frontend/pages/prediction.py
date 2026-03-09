@@ -1,10 +1,9 @@
 import streamlit as st
 import requests
+import os
 
 st.set_page_config(layout="wide")
 st.title("Employee Attrition Prediction")
-
-import os
 
 # Use environment variable for deployment, fallback to local for development
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
@@ -43,9 +42,9 @@ if st.button("Predict Attrition Risk"):
             st.subheader("Prediction Result")
 
             if risk == "High":
-                st.error("High Risk of Attrition")
+                st.error(f"High Risk of Attrition ({probability:.1%})")
             else:
-                st.success("Low Risk of Attrition")
+                st.success(f"Low Risk of Attrition ({probability:.1%})")
 
             st.markdown("---")
             st.subheader("Model Performance & Information")
@@ -77,7 +76,7 @@ if st.button("Predict Attrition Risk"):
             """)
 
         else:
-            st.error("Backend error. Please check if the API server is running.")
+            st.error("Backend error. Please check if the API server is available.")
 
     except Exception:
-        st.error("Could not connect to backend. Ensure FastAPI is running on port 8000.")
+        st.error(f"Could not connect to backend at {API_URL}. Ensure the service is running.")
