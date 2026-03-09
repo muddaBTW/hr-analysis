@@ -1,5 +1,11 @@
 import os
+import warnings
 from dotenv import load_dotenv
+
+# Suppress noisy HuggingFace/LangChain warnings (model is public, no token needed)
+warnings.filterwarnings("ignore", message=".*HuggingFaceEmbeddings.*deprecated.*")
+warnings.filterwarnings("ignore", message=".*unauthenticated.*HF Hub.*")
+os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
 
 # Load .env from project root
 # (On Render, this won't matter as we use real Env Vars)
