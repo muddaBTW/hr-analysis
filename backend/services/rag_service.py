@@ -7,24 +7,48 @@ from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 load_dotenv()
 
-# load knowledge
-with open('knowledge.txt', 'r', encoding='utf-8') as f:
-    text = f.read()
+# Global variables for lazy loading
+_vectorstore = None
+_embeddings = None
+INDEX_PATH = "faiss_index"
 
-# split into chunks
-splitter = CharacterTextSplitter(
-    chunk_size=500,
-    chunk_overlap=50
-)
+def get_vectorstore():
+    global _vectorstore, _embeddings
+    if _vectorstore is None:
+        # Check if local index exists
+        _embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        
+        if os.path.exists(INDEX_PATH):
+            print(f"Loading existing RAG index from {INDEX_PATH}...")
+            _vectorstore = FAISS.load_local(
+                INDEX_PATH, 
+                _embeddings, 
+                allow_dangerous_deserialization=True
+            )
+            print("RAG index loaded.")
+        else:
+            print("Index not found. Initializing RAG vectorstore from knowledge.md...")
+            # load knowledge
+            with open('knowledge.md', 'r', encoding='utf-8') as f:
+                text = f.read()
 
-chunks = splitter.split_text(text)
-documents = [Document(page_content=chunk) for chunk in chunks]
+            # split into chunks
+            splitter = CharacterTextSplitter(
+                chunk_size=700,
+                chunk_overlap=70
+            )
 
-# create embeddings
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+            chunks = splitter.split_text(text)
+            documents = [Document(page_content=chunk) for chunk in chunks]
 
-# create vector store
-vectorstore = FAISS.from_documents(documents, embeddings)
+            # create vector store
+            _vectorstore = FAISS.from_documents(documents, _embeddings)
+            
+            # Save local index for next time
+            _vectorstore.save_local(INDEX_PATH)
+            print(f"RAG vectorstore initialized and saved to {INDEX_PATH}.")
+            
+    return _vectorstore
 
 def ask_question(query: str, api_key: str = None):
     # Determine API key
@@ -42,8 +66,9 @@ def ask_question(query: str, api_key: str = None):
     except Exception as e:
         return f"Error connecting to Groq API. Please check your API key. Details: {e}"
 
-    # Retrieve relevant chunks
-    docs = vectorstore.similarity_search(query, k=3)
+    # Retrieve relevant chunks from the lazy-loaded vectorstore
+    vector_db = get_vectorstore()
+    docs = vector_db.similarity_search(query, k=3)
 
     # Combine context
     context = "\n".join([doc.page_content for doc in docs])
@@ -68,6 +93,8 @@ Question: {query}
 Answer:"""
 
     # Call LLM
-    response = llm.invoke(prompt)
-
-    return response.content
+    try:
+        response = llm.invoke(prompt)
+        return response.content
+    except Exception as e:
+        return f"Error invoking LLM: {e}"

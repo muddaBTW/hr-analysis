@@ -57,3 +57,6 @@ FAISS_Index/
 extract.py
 extracted_code.py
 raw_columns.pkl
+
+# AI Search Index
+faiss_index/
