@@ -1,18 +1,23 @@
 import joblib
 import pandas as pd
 
+import threading
+
 _model = None
 _columns = None
 _imputation_values = None
+_lock = threading.Lock()
 
 def get_model_artifacts():
     global _model, _columns, _imputation_values
     if _model is None:
-        print("Loading model artifacts...")
-        _model = joblib.load('model.pkl')
-        _columns = joblib.load('columns.pkl')
-        _imputation_values = joblib.load('imputation_values.pkl')
-        print("Model artifacts loaded.")
+        with _lock:
+            if _model is None:
+                print("Loading model artifacts...")
+                _model = joblib.load('model.pkl')
+                _columns = joblib.load('columns.pkl')
+                _imputation_values = joblib.load('imputation_values.pkl')
+                print("Model artifacts loaded.")
     return _model, _columns, _imputation_values
 
 def predict_employee(features: dict):

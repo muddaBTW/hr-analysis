@@ -78,5 +78,6 @@ if st.button("Predict Attrition Risk"):
         else:
             st.error("Backend error. Please check if the API server is available.")
 
-    except Exception:
-        st.error(f"Could not connect to backend at {API_URL}. Ensure the service is running.")
+    except Exception as e:
+        st.error(f"Error processing prediction: {str(e)}")
+        st.info(f"Connected to backend at: {BACKEND_URL}")
