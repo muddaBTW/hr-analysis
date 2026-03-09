@@ -436,7 +436,8 @@ with tab6:
 
     # ─── Feature Importance (aggregated by original feature) ───
     st.subheader("Top 15 Feature Importance")
-    importance = model.feature_importances_
+    # Since model is a Pipeline, we need to access the classifier step for importances
+    importance = model.named_steps['classifier'].feature_importances_
     original_cols = df.drop('Attrition', axis=1).columns.tolist()
 
     # Map each one-hot column back to its original feature and sum importances
