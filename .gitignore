@@ -51,3 +51,9 @@ Thumbs.db
 # Project specific
 FAISS_Index/
 *.log
+
+# Data and Models
+*.csv
+extract.py
+extracted_code.py
+raw_columns.pkl
