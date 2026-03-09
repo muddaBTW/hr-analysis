@@ -56,9 +56,14 @@ def style_plotly(fig, title='', height=500):
 
 
 # ─── Load Data ───
-df = pd.read_csv(
-    r'C:\Users\mudda\OneDrive\Desktop\hr-ai-system\WA_Fn-UseC_-HR-Employee-Attrition.csv'
-)
+import os
+
+# Use relative path for cloud deployment
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Data is in the root (2 levels up)
+DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIR)), 'WA_Fn-UseC_-HR-Employee-Attrition.csv')
+
+df = pd.read_csv(DATA_PATH)
 
 # ─── KPIs ───
 col1, col2, col3, col4 = st.columns(4)
@@ -377,8 +382,10 @@ with tab5:
 # TAB 6 — MODEL PERFORMANCE
 # ═══════════════════════════════════════════════════
 with tab6:
-    model = joblib.load("../backend/model.pkl")
-    columns = joblib.load("../backend/columns.pkl")
+    # Paths relative to this file
+    BACKEND_DIR = os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIR)), 'backend')
+    model = joblib.load(os.path.join(BACKEND_DIR, "model.pkl"))
+    columns = joblib.load(os.path.join(BACKEND_DIR, "columns.pkl"))
 
     X = pd.get_dummies(df.drop('Attrition', axis=1))
     X = X.reindex(columns=columns, fill_value=0)
