@@ -21,7 +21,7 @@ def predict(data:Employee):
 
 @app.post('/ask')
 def ask(data:Question):
-    answer = ask_question(data.query)
+    answer = ask_question(data.query, data.api_key)
 
     return {
         'answer':answer

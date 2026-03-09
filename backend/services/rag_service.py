@@ -26,14 +26,21 @@ embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 # create vector store
 vectorstore = FAISS.from_documents(documents, embeddings)
 
-# initialize LLM
-llm = ChatGroq(
-    groq_api_key=os.getenv('GROQ_API_KEY'),
-    model_name='llama-3.1-8b-instant'
-)
+def ask_question(query: str, api_key: str = None):
+    # Determine API key
+    groq_api_key = api_key if api_key else os.getenv('GROQ_API_KEY')
+    
+    if not groq_api_key:
+        return "Error: No Groq API Key provided. Please enter your API Key in the sidebar."
 
-# RAG
-def ask_question(query: str):
+    # Initialize LLM dynamically per request
+    try:
+        llm = ChatGroq(
+            groq_api_key=groq_api_key,
+            model_name='llama-3.1-8b-instant'
+        )
+    except Exception as e:
+        return f"Error connecting to Groq API. Please check your API key. Details: {e}"
 
     # Retrieve relevant chunks
     docs = vectorstore.similarity_search(query, k=3)
