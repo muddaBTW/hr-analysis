@@ -43,7 +43,24 @@ if st.button("Predict Attrition Risk"):
             else:
                 st.success("Low Risk of Attrition")
 
-            st.write(f"Probability of Leaving: {probability:.2%}")
+            st.markdown("---")
+            st.subheader("Model Performance & Information")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Accuracy", "81%")
+            with col2:
+                st.metric("ROC-AUC", "0.81")
+            with col3:
+                st.metric("Recall (Minority)", "59%")
+            with col4:
+                st.metric("F1-Score", "0.50")
+
+            st.info("""
+            **Model Architecture:** Gradient Boosting Classifier  
+            **Preprocessing Hub:** StandardScaler -> SMOTE -> ML Pipeline  
+            **Imputation Logic:** Missing inputs are automatically filled with training set medians/modes to ensure stability.
+            """)
 
             st.markdown("""
             ### Interpretation
