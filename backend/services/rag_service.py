@@ -66,15 +66,19 @@ def get_retriever():
         _retriever = TFIDFRetriever()
     return _retriever
 
-def get_rag_chain():
+def get_rag_chain(api_key: str = None):
     """Returns a function that performs the RAG logic."""
     from langchain_groq import ChatGroq
     from langchain_core.prompts import ChatPromptTemplate
-    from langchain_core.output_parsers import StrOutputParser
-    from langchain_core.runnables import RunnablePassthrough
     
     retriever = get_retriever()
-    llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
+    
+    # Use provided api_key if available, otherwise it falls back to environment
+    llm = ChatGroq(
+        model_name="llama-3.3-70b-versatile", 
+        temperature=0,
+        groq_api_key=api_key
+    )
     
     template = """You are an HR Assistant for a company. Answer the question based ONLY on the following context.
     If you cannot find the answer in the context, say that you don't know based on the available data.

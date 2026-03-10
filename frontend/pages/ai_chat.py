@@ -8,7 +8,6 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 st.title('Ai Chat Assistant')
 
 st.markdown('Ask questions about the Dataset')
-st.caption('⏳ The first question may take up to ~60s as the AI model initializes on the server.')
 
 # Sidebar for API Key
 with st.sidebar:
@@ -24,22 +23,24 @@ if st.button('Ask'):
         st.warning('Please enter a question')
     else:
         try:
-            payload = {'query': query}
+            payload = {'message': query}
             if user_api_key.strip():
                 payload['api_key'] = user_api_key.strip()
             
-            with st.spinner('🤖 Thinking... (first query may take ~60s)'):
+            with st.spinner('🤖 Thinking...'):
                 response = requests.post(
-                    f"{BACKEND_URL}/ask",
+                    f"{BACKEND_URL}/chat",
                     json=payload,
                     timeout=120
                 )
-
-            result = response.json()
-            answer = result.get('answer', 'No answer found.')
-
-            st.subheader('Ai Response')
-            st.write(answer)
+            
+            if response.status_code == 200:
+                result = response.json()
+                answer = result.get('response', 'No response found.')
+                st.subheader('Ai Response')
+                st.write(answer)
+            else:
+                st.error(f"Error: {response.status_code} - {response.text}")
 
         except requests.exceptions.Timeout:
             st.error('⏱️ Request timed out. The server may be starting up — please try again in a minute.')

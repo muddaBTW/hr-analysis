@@ -17,6 +17,7 @@ class PredictionRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    api_key: str = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,7 +45,10 @@ async def predict(request: PredictionRequest):
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    rag_chain = get_rag_chain()
+    # If the user provides an API key, we should ideally re-initialize the LLM or pass it through.
+    # For now, we'll stick to the server-side key unless we update get_rag_chain.
+    # To keep it simple and consistent with the frontend possibility:
+    rag_chain = get_rag_chain(api_key=request.api_key)
     response = rag_chain(request.message)
     return {"response": response}
 
