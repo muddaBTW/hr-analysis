@@ -1,13 +1,9 @@
 fastapi
 uvicorn
-pydantic
 pandas
 numpy
-scikit-learn==1.7.2
+scikit-learn
 joblib
-openpyxl
-xlrd
-requests
 langchain-groq
 python-dotenv
 imbalanced-learn

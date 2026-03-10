@@ -1,53 +1,57 @@
-from fastapi import FastAPI
-import os
+from fastapi import FastAPI, BackgroundTasks
+from pydantic import BaseModel
+from services.model_service import predict_employee, get_model_artifacts
+from services.rag_service import get_retriever, get_rag_chain
 import threading
+import os
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
 
-# Define a lifespan event to trigger background loading
+# Load environment variables from root directory
+dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+load_dotenv(dotenv_path, override=True)
+
+# Define request/response models
+class PredictionRequest(BaseModel):
+    features: dict
+
+class ChatRequest(BaseModel):
+    message: str
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # This runs in the background as soon as the server starts
-    def load_everything():
+    # Preload model and retriever in the background to speed up first request
+    def preload():
         try:
-            print("--- Proactive Background Loading Started ---")
-            from services.model_service import get_model_artifacts
-            get_model_artifacts() # High-priority, lightweight
-            print("--- Proactive Background Loading Complete (ML Model) ---")
-            
-            # Pre-load RAG knowledge base (lightweight TF-IDF, ~5MB)
-            from services.rag_service import get_knowledge_index
-            get_knowledge_index()
-            print("--- Proactive Background Loading Complete (RAG) ---")
+            print("Preloading model artifacts and knowledge index...")
+            get_model_artifacts()
+            get_retriever()
+            print("Preloading complete.")
         except Exception as e:
-            print(f"Background loading failed (will retry on first request): {e}")
+            print(f"Error during preloading: {e}")
 
-    # Start the thread
-    thread = threading.Thread(target=load_everything, daemon=True)
+    thread = threading.Thread(target=preload)
     thread.start()
     yield
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(title="HR Attrition AI API", lifespan=lifespan)
 
-@app.get('/')
-def home():
-    return {'message': 'Backend Running', 'status': 'healthy'}
+@app.post("/predict")
+async def predict(request: PredictionRequest):
+    probability = predict_employee(request.features)
+    risk = "High" if probability > 0.5 else "Low"
+    return {"probability": probability, "risk": risk}
 
-@app.post('/predict')
-def predict(data: dict):
-    from services.model_service import predict_employee
-    features = data.get("features", {})
-    probability = predict_employee(features)
-    return {
-        'probability': probability,
-        'risk': 'High' if probability > 0.5 else 'Low'
-    }
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    rag_chain = get_rag_chain()
+    response = rag_chain(request.message)
+    return {"response": response}
 
-@app.post('/ask')
-def ask(data: dict):
-    from services.rag_service import ask_question
-    query = data.get("query", "")
-    api_key = data.get("api_key")
-    answer = ask_question(query, api_key)
-    return {
-        'answer': answer
-    }
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

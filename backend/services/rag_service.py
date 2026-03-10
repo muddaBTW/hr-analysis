@@ -1,108 +1,103 @@
-import os
-from dotenv import load_dotenv
+import pandas as pd
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
+import re
+import os
 
-# Load .env from project root
-# (On Render, this won't matter as we use real Env Vars)
-base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-load_dotenv(os.path.join(base_dir, '.env'))
+class TFIDFRetriever:
+    def __init__(self, knowledge_file="knowledge.md"):
+        self.knowledge_file = knowledge_file
+        self.vectorizer = TfidfVectorizer(stop_words='english')
+        self.docs = []
+        self.tfidf_matrix = None
+        self._initialize()
 
-# Global variables for lazy loading
-_chunks = None
-_vectorizer = None
-_tfidf_matrix = None
+    def _initialize(self):
+        """Loads and processes the knowledge base into chunks."""
+        try:
+            # Look for knowledge.md in the root of the backend folder
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            file_path = os.path.join(base_dir, self.knowledge_file)
+            
+            if not os.path.exists(file_path):
+                print(f"Warning: {self.knowledge_file} not found at {file_path}")
+                self.docs = ["No knowledge base available."]
+            else:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                # Split by headers (simple chunking strategy)
+                self.docs = re.split(r'\n(?=# )', content)
+                self.docs = [d.strip() for d in self.docs if d.strip()]
+            
+            if self.docs:
+                self.tfidf_matrix = self.vectorizer.fit_transform(self.docs)
+                print(f"TF-IDF Index built with {len(self.docs)} chunks.")
+        except Exception as e:
+            print(f"Error initializing TF-IDF Retriever: {e}")
+            self.docs = ["Error loading knowledge base."]
+            self.tfidf_matrix = self.vectorizer.fit_transform(self.docs)
 
-def get_knowledge_index():
-    """Build a lightweight TF-IDF index from knowledge.md (uses ~5MB vs ~300MB for HuggingFace)"""
-    global _chunks, _vectorizer, _tfidf_matrix
-    if _chunks is None:
-        print("Initializing RAG knowledge base with TF-IDF...")
+    def get_relevant_documents(self, query: str, k: int = 3):
+        """Retrieves top k relevant chunks for a query."""
+        if self.tfidf_matrix is None or not self.docs:
+            return []
+            
+        query_vec = self.vectorizer.transform([query])
+        similarities = cosine_similarity(query_vec, self.tfidf_matrix).flatten()
         
-        # Load knowledge file
-        with open('knowledge.md', 'r', encoding='utf-8') as f:
-            text = f.read()
-
-        # Split into chunks by section headers and paragraphs
-        raw_chunks = []
-        current_chunk = ""
-        for line in text.split('\n'):
-            current_chunk += line + "\n"
-            # Split on section breaks or when chunk gets large enough
-            if len(current_chunk) > 500 or (line.startswith('---') and len(current_chunk) > 100):
-                if current_chunk.strip():
-                    raw_chunks.append(current_chunk.strip())
-                current_chunk = ""
-        if current_chunk.strip():
-            raw_chunks.append(current_chunk.strip())
+        # Get top k indices
+        top_k_indices = similarities.argsort()[-k:][::-1]
         
-        _chunks = raw_chunks
+        relevant_chunks = []
+        for i in top_k_indices:
+            if similarities[i] > 0: # Only return chunks with some similarity
+                relevant_chunks.append(self.docs[i])
         
-        # Build TF-IDF matrix
-        _vectorizer = TfidfVectorizer(
-            stop_words='english',
-            max_features=5000,
-            ngram_range=(1, 2)  # unigrams + bigrams for better matching
-        )
-        _tfidf_matrix = _vectorizer.fit_transform(_chunks)
-        print(f"RAG knowledge base ready: {len(_chunks)} chunks indexed.")
-    
-    return _chunks, _vectorizer, _tfidf_matrix
+        return relevant_chunks
 
+# Global retriever instance for preloading
+_retriever = None
 
-def ask_question(query: str, api_key: str = None):
-    # Determine API key
-    groq_api_key = api_key if api_key else os.getenv('GROQ_API_KEY')
-    
-    if not groq_api_key:
-        return "Error: No Groq API Key provided. Please enter your API Key in the sidebar."
+def get_retriever():
+    global _retriever
+    if _retriever is None:
+        _retriever = TFIDFRetriever()
+    return _retriever
 
+def get_rag_chain():
+    """Returns a function that performs the RAG logic."""
     from langchain_groq import ChatGroq
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.output_parsers import StrOutputParser
+    from langchain_core.runnables import RunnablePassthrough
     
-    # Initialize LLM dynamically per request
-    try:
-        llm = ChatGroq(
-            groq_api_key=groq_api_key,
-            model_name='llama-3.1-8b-instant'
-        )
-    except Exception as e:
-        return f"Error connecting to Groq API. Please check your API key. Details: {e}"
-
-    # Retrieve relevant chunks using TF-IDF similarity
-    chunks, vectorizer, tfidf_matrix = get_knowledge_index()
-    query_vec = vectorizer.transform([query])
-    similarities = cosine_similarity(query_vec, tfidf_matrix).flatten()
+    retriever = get_retriever()
+    llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
     
-    # Get top 3 most relevant chunks
-    top_indices = np.argsort(similarities)[-3:][::-1]
-    context = "\n".join([chunks[i] for i in top_indices if similarities[i] > 0.05])
+    template = """You are an HR Assistant for a company. Answer the question based ONLY on the following context.
+    If you cannot find the answer in the context, say that you don't know based on the available data.
     
-    if not context:
-        context = "\n".join([chunks[i] for i in top_indices])
+    Context:
+    {context}
+    
+    Question: {question}
+    
+    Answer:"""
+    
+    prompt = ChatPromptTemplate.from_template(template)
+    
+    def format_docs(docs):
+        return "\n\n".join(docs)
 
-    # prompt
-    prompt = f"""You are an expert HR analytics assistant for an employee attrition prediction system.
-
-Rules:
-- Answer ONLY using the provided context. Never fabricate information.
-- If the answer is not in the context, say: "This information is not available in the knowledge base."
-- Be concise and direct — aim for under 150 words unless the question requires detailed explanation.
-- Use bullet points for lists and comparisons.
-- Include specific numbers, percentages, and statistics when available in the context.
-- Structure multi-part answers with bold headings.
-- Do not repeat the question in your answer.
-
-Context:
-{context}
-
-Question: {query}
-
-Answer:"""
-
-    # Call LLM
-    try:
-        response = llm.invoke(prompt)
+    # Simplified RAG chain logic without heavy LangChain dependencies
+    def chain(question: str):
+        context_docs = retriever.get_relevant_documents(question)
+        context_text = format_docs(context_docs)
+        
+        messages = prompt.format_messages(context=context_text, question=question)
+        response = llm.invoke(messages)
         return response.content
-    except Exception as e:
-        return f"Error invoking LLM: {e}"
+
+    return chain
