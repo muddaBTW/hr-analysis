@@ -1,5 +1,5 @@
-streamlit
-altair
+streamlit>=1.31.0
+altair<5
 requests
 pandas
 numpy
@@ -7,5 +7,5 @@ seaborn
 plotly
 matplotlib
 joblib
-scikit-learn
+scikit-learn==1.7.2
 imbalanced-learn

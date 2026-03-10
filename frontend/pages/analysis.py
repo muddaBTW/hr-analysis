@@ -55,25 +55,16 @@ def style_plotly(fig, title='', height=500):
     return fig
 
 
-# ─── Load Data ───
-import os
-
 @st.cache_data
-def load_data(path):
-    return pd.read_csv(path)
+def load_data():
+    """Load the dataset with caching."""
+    # Use relative path for cloud deployment
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    # Data is in the root (2 levels up)
+    DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIR)), 'WA_Fn-UseC_-HR-Employee-Attrition.csv')
+    return pd.read_csv(DATA_PATH)
 
-@st.cache_resource
-def load_models(backend_dir):
-    model = joblib.load(os.path.join(backend_dir, "model.pkl"))
-    columns = joblib.load(os.path.join(backend_dir, "columns.pkl"))
-    return model, columns
-
-# Use relative path for cloud deployment
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Data is in the root (2 levels up)
-DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIR)), 'WA_Fn-UseC_-HR-Employee-Attrition.csv')
-
-df = load_data(DATA_PATH)
+df = load_data()
 
 # ─── KPIs ───
 col1, col2, col3, col4 = st.columns(4)
@@ -98,29 +89,34 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 # ═══════════════════════════════════════════════════
 # TAB 1 — OVERVIEW
 # ═══════════════════════════════════════════════════
+@st.cache_data
+def plot_attrition_pie(_df, _map):
+    counts = _df['Attrition'].value_counts()
+    fig = px.pie(
+        values=counts.values,
+        names=counts.index,
+        color=counts.index,
+        color_discrete_map=_map,
+        hole=0.45,
+    )
+    fig.update_traces(
+        textposition='inside',
+        textinfo='percent+label+value',
+        textfont_size=14,
+        marker=dict(line=dict(color='white', width=2))
+    )
+    style_plotly(fig, 'Employee Attrition Split', 420)
+    fig.update_layout(
+        legend=dict(orientation='h', yanchor='bottom', y=-0.15, xanchor='center', x=0.5)
+    )
+    return fig
+
 with tab1:
     c1, c2 = st.columns([1, 1])
 
     with c1:
         st.subheader("Attrition Distribution")
-        counts = df['Attrition'].value_counts()
-        fig = px.pie(
-            values=counts.values,
-            names=counts.index,
-            color=counts.index,
-            color_discrete_map=ATTRITION_MAP,
-            hole=0.45,
-        )
-        fig.update_traces(
-            textposition='inside',
-            textinfo='percent+label+value',
-            textfont_size=14,
-            marker=dict(line=dict(color='white', width=2))
-        )
-        style_plotly(fig, 'Employee Attrition Split', 420)
-        fig.update_layout(
-            legend=dict(orientation='h', yanchor='bottom', y=-0.15, xanchor='center', x=0.5)
-        )
+        fig = plot_attrition_pie(df, ATTRITION_MAP)
         st.plotly_chart(fig, use_container_width=True)
 
     with c2:
@@ -149,19 +145,17 @@ with tab1:
 # ═══════════════════════════════════════════════════
 # TAB 2 — FEATURE ANALYSIS
 # ═══════════════════════════════════════════════════
-with tab2:
-    st.subheader("Categorical Features vs Attrition")
-
-    cat_cols = df.select_dtypes(include=['object', 'category']).columns
-
+@st.cache_data
+def plot_categorical_features(_df, _no_color, _yes_color):
+    cat_cols = _df.select_dtypes(include=['object', 'category']).columns
     fig, axes = plt.subplots(3, 3, figsize=(22, 16))
     axes = axes.flatten()
 
     for i, col in enumerate(cat_cols[:9]):
         sns.countplot(
-            data=df, x=col, hue='Attrition',
+            data=_df, x=col, hue='Attrition',
             hue_order=['No', 'Yes'],
-            palette=[NO_COLOR, YES_COLOR],
+            palette=[_no_color, _yes_color],
             ax=axes[i]
         )
         axes[i].set_title(col, fontsize=13, fontweight='bold', color='#1F2937')
@@ -169,7 +163,35 @@ with tab2:
         axes[i].set_xlabel('')
 
     plt.tight_layout(pad=3.0)
-    st.pyplot(fig)
+    return fig
+
+@st.cache_data
+def plot_numerical_features(_df, _map):
+    num_cols = [
+        'Age', 'DailyRate', 'DistanceFromHome', 'HourlyRate',
+        'MonthlyIncome', 'MonthlyRate', 'NumCompaniesWorked',
+        'PercentSalaryHike', 'TotalWorkingYears'
+    ]
+    fig, axes = plt.subplots(3, 3, figsize=(22, 16))
+    axes = axes.flatten()
+
+    for i, col in enumerate(num_cols):
+        sns.boxplot(
+            data=_df, x='Attrition', y=col, hue='Attrition',
+            order=['No', 'Yes'], hue_order=['No', 'Yes'],
+            palette=_map, dodge=False, legend=False,
+            ax=axes[i]
+        )
+        axes[i].set_title(col, fontsize=13, fontweight='bold', color='#1F2937')
+        axes[i].set_xlabel('')
+
+    plt.tight_layout(pad=3.0)
+    return fig
+
+with tab2:
+    st.subheader("Categorical Features vs Attrition")
+    fig_cat = plot_categorical_features(df, NO_COLOR, YES_COLOR)
+    st.pyplot(fig_cat)
 
     st.info(
         "**Takeaway:** Overtime, business travel frequency, and department "
@@ -181,28 +203,8 @@ with tab2:
 
     # ─── Numerical ───
     st.subheader("Numerical Features vs Attrition")
-
-    num_cols = [
-        'Age', 'DailyRate', 'DistanceFromHome', 'HourlyRate',
-        'MonthlyIncome', 'MonthlyRate', 'NumCompaniesWorked',
-        'PercentSalaryHike', 'TotalWorkingYears'
-    ]
-
-    fig2, axes2 = plt.subplots(3, 3, figsize=(22, 16))
-    axes2 = axes2.flatten()
-
-    for i, col in enumerate(num_cols):
-        sns.boxplot(
-            data=df, x='Attrition', y=col, hue='Attrition',
-            order=['No', 'Yes'], hue_order=['No', 'Yes'],
-            palette=ATTRITION_MAP, dodge=False, legend=False,
-            ax=axes2[i]
-        )
-        axes2[i].set_title(col, fontsize=13, fontweight='bold', color='#1F2937')
-        axes2[i].set_xlabel('')
-
-    plt.tight_layout(pad=3.0)
-    st.pyplot(fig2)
+    fig_num = plot_numerical_features(df, ATTRITION_MAP)
+    st.pyplot(fig_num)
 
     st.info(
         "**Takeaway:** Employees who leave have lower monthly income, fewer "
@@ -217,26 +219,58 @@ with tab2:
 with tab3:
     c1, c2 = st.columns(2)
 
+@st.cache_data
+def plot_dept_attrition(_df, _colors):
+    dept_rate = (
+        _df.groupby('Department')['Attrition']
+        .value_counts(normalize=True)
+        .mul(100).rename('Rate').reset_index()
+    )
+    dept_yes = dept_rate[dept_rate['Attrition'] == 'Yes']
+
+    fig = px.bar(
+        dept_yes, x='Department', y='Rate',
+        color='Department',
+        color_discrete_sequence=_colors,
+        text=dept_yes['Rate'].round(1),
+    )
+    fig.update_traces(textposition='outside', texttemplate='%{text}%')
+    style_plotly(fig, 'Attrition Rate (%) by Department', 450)
+    fig.update_layout(showlegend=False, yaxis_title='Attrition Rate (%)', xaxis_title='')
+    return fig
+
+@st.cache_data
+def plot_role_attrition(_df):
+    role_rate = (
+        _df.groupby('JobRole')['Attrition']
+        .value_counts(normalize=True)
+        .mul(100).rename('Rate').reset_index()
+    )
+    role_yes = role_rate[role_rate['Attrition'] == 'Yes'].sort_values('Rate', ascending=True)
+
+    fig = px.bar(
+        role_yes, x='Rate', y='JobRole',
+        orientation='h',
+        color='Rate',
+        color_continuous_scale=['#6366F1', '#F43F5E'],
+        text=role_yes['Rate'].round(1),
+    )
+    fig.update_traces(textposition='outside', texttemplate='%{text}%')
+    style_plotly(fig, 'Attrition Rate (%) by Job Role', 450)
+    fig.update_layout(
+        showlegend=False, coloraxis_showscale=False,
+        xaxis_title='Attrition Rate (%)', yaxis_title=''
+    )
+    return fig
+
+with tab3:
+    c1, c2 = st.columns(2)
+
     # ─── By Department ───
     with c1:
         st.subheader("Attrition Rate by Department")
-        dept_rate = (
-            df.groupby('Department')['Attrition']
-            .value_counts(normalize=True)
-            .mul(100).rename('Rate').reset_index()
-        )
-        dept_yes = dept_rate[dept_rate['Attrition'] == 'Yes']
-
-        fig = px.bar(
-            dept_yes, x='Department', y='Rate',
-            color='Department',
-            color_discrete_sequence=CATEGORY_COLORS,
-            text=dept_yes['Rate'].round(1),
-        )
-        fig.update_traces(textposition='outside', texttemplate='%{text}%')
-        style_plotly(fig, 'Attrition Rate (%) by Department', 450)
-        fig.update_layout(showlegend=False, yaxis_title='Attrition Rate (%)', xaxis_title='')
-        st.plotly_chart(fig, use_container_width=True)
+        fig_dept = plot_dept_attrition(df, CATEGORY_COLORS)
+        st.plotly_chart(fig_dept, use_container_width=True)
 
         st.markdown("""
         - **Sales** has the highest attrition (~21%)
@@ -246,27 +280,8 @@ with tab3:
     # ─── By Job Role ───
     with c2:
         st.subheader("Attrition Rate by Job Role")
-        role_rate = (
-            df.groupby('JobRole')['Attrition']
-            .value_counts(normalize=True)
-            .mul(100).rename('Rate').reset_index()
-        )
-        role_yes = role_rate[role_rate['Attrition'] == 'Yes'].sort_values('Rate', ascending=True)
-
-        fig = px.bar(
-            role_yes, x='Rate', y='JobRole',
-            orientation='h',
-            color='Rate',
-            color_continuous_scale=['#6366F1', '#F43F5E'],
-            text=role_yes['Rate'].round(1),
-        )
-        fig.update_traces(textposition='outside', texttemplate='%{text}%')
-        style_plotly(fig, 'Attrition Rate (%) by Job Role', 450)
-        fig.update_layout(
-            showlegend=False, coloraxis_showscale=False,
-            xaxis_title='Attrition Rate (%)', yaxis_title=''
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        fig_role = plot_role_attrition(df)
+        st.plotly_chart(fig_role, use_container_width=True)
 
         st.markdown("""
         - **Sales Reps** have ~40% attrition (highest)
@@ -280,47 +295,83 @@ with tab3:
 with tab4:
     c1, c2 = st.columns(2)
 
+@st.cache_data
+def plot_wlb_attrition(_df, _colors):
+    wlb = (
+        _df.groupby('WorkLifeBalance')['Attrition']
+        .value_counts(normalize=True).mul(100)
+        .rename('Rate').reset_index()
+    )
+    wlb_yes = wlb[wlb['Attrition'] == 'Yes']
+
+    fig = px.bar(
+        wlb_yes, x='WorkLifeBalance', y='Rate',
+        color='WorkLifeBalance',
+        color_discrete_sequence=_colors,
+        text=wlb_yes['Rate'].round(1),
+    )
+    fig.update_traces(textposition='outside', texttemplate='%{text}%')
+    style_plotly(fig, 'Attrition Rate by Work-Life Balance', 400)
+    fig.update_layout(showlegend=False, yaxis_title='Attrition Rate (%)', xaxis_title='Balance Level')
+    return fig
+
+@st.cache_data
+def plot_satisfaction_attrition(_df, _colors):
+    js = (
+        _df.groupby('JobSatisfaction')['Attrition']
+        .value_counts(normalize=True).mul(100)
+        .rename('Rate').reset_index()
+    )
+    js_yes = js[js['Attrition'] == 'Yes']
+
+    fig = px.bar(
+        js_yes, x='JobSatisfaction', y='Rate',
+        color='JobSatisfaction',
+        color_discrete_sequence=_colors,
+        text=js_yes['Rate'].round(1),
+    )
+    fig.update_traces(textposition='outside', texttemplate='%{text}%')
+    style_plotly(fig, 'Attrition Rate by Job Satisfaction', 400)
+    fig.update_layout(showlegend=False, yaxis_title='Attrition Rate (%)', xaxis_title='Satisfaction Level')
+    return fig
+
+@st.cache_data
+def plot_income_scatter(_df, _map):
+    fig = px.scatter(
+        _df, x='YearsAtCompany', y='MonthlyIncome',
+        color='Attrition',
+        color_discrete_map=_map,
+        opacity=0.6,
+    )
+    fig.update_traces(marker=dict(size=5))
+    style_plotly(fig, 'Monthly Income vs Tenure (by Attrition)', 450)
+    return fig
+
+@st.cache_data
+def plot_income_violin(_df, _map):
+    fig = px.violin(
+        _df, x='Attrition', y='MonthlyIncome',
+        color='Attrition',
+        color_discrete_map=_map,
+        box=True, points='all',
+    )
+    style_plotly(fig, 'Monthly Income by Attrition Status', 450)
+    return fig
+
+with tab4:
+    c1, c2 = st.columns(2)
+
     # ─── Work-Life Balance ───
     with c1:
         st.subheader("Work-Life Balance vs Attrition")
-        wlb = (
-            df.groupby('WorkLifeBalance')['Attrition']
-            .value_counts(normalize=True).mul(100)
-            .rename('Rate').reset_index()
-        )
-        wlb_yes = wlb[wlb['Attrition'] == 'Yes']
-
-        fig = px.bar(
-            wlb_yes, x='WorkLifeBalance', y='Rate',
-            color='WorkLifeBalance',
-            color_discrete_sequence=CATEGORY_COLORS,
-            text=wlb_yes['Rate'].round(1),
-        )
-        fig.update_traces(textposition='outside', texttemplate='%{text}%')
-        style_plotly(fig, 'Attrition Rate by Work-Life Balance', 400)
-        fig.update_layout(showlegend=False, yaxis_title='Attrition Rate (%)', xaxis_title='Balance Level')
-        st.plotly_chart(fig, use_container_width=True)
+        fig_wlb = plot_wlb_attrition(df, CATEGORY_COLORS)
+        st.plotly_chart(fig_wlb, use_container_width=True)
 
     # ─── Job Satisfaction ───
     with c2:
         st.subheader("Job Satisfaction vs Attrition")
-        js = (
-            df.groupby('JobSatisfaction')['Attrition']
-            .value_counts(normalize=True).mul(100)
-            .rename('Rate').reset_index()
-        )
-        js_yes = js[js['Attrition'] == 'Yes']
-
-        fig = px.bar(
-            js_yes, x='JobSatisfaction', y='Rate',
-            color='JobSatisfaction',
-            color_discrete_sequence=CATEGORY_COLORS,
-            text=js_yes['Rate'].round(1),
-        )
-        fig.update_traces(textposition='outside', texttemplate='%{text}%')
-        style_plotly(fig, 'Attrition Rate by Job Satisfaction', 400)
-        fig.update_layout(showlegend=False, yaxis_title='Attrition Rate (%)', xaxis_title='Satisfaction Level')
-        st.plotly_chart(fig, use_container_width=True)
+        fig_js = plot_satisfaction_attrition(df, CATEGORY_COLORS)
+        st.plotly_chart(fig_js, use_container_width=True)
 
     st.divider()
 
@@ -329,27 +380,14 @@ with tab4:
     # ─── Income vs Years at Company ───
     with c3:
         st.subheader("Income vs Years at Company")
-        fig = px.scatter(
-            df, x='YearsAtCompany', y='MonthlyIncome',
-            color='Attrition',
-            color_discrete_map=ATTRITION_MAP,
-            opacity=0.6,
-        )
-        fig.update_traces(marker=dict(size=5))
-        style_plotly(fig, 'Monthly Income vs Tenure (by Attrition)', 450)
-        st.plotly_chart(fig, use_container_width=True)
+        fig_scat = plot_income_scatter(df, ATTRITION_MAP)
+        st.plotly_chart(fig_scat, use_container_width=True)
 
     # ─── Income Violin ───
     with c4:
         st.subheader("Income Distribution")
-        fig = px.violin(
-            df, x='Attrition', y='MonthlyIncome',
-            color='Attrition',
-            color_discrete_map=ATTRITION_MAP,
-            box=True, points='all',
-        )
-        style_plotly(fig, 'Monthly Income by Attrition Status', 450)
-        st.plotly_chart(fig, use_container_width=True)
+        fig_viol = plot_income_violin(df, ATTRITION_MAP)
+        st.plotly_chart(fig_viol, use_container_width=True)
 
     st.info(
         "**Takeaway:** Poor work-life balance causes ~31% attrition. Low satisfaction "
@@ -360,10 +398,9 @@ with tab4:
 # ═══════════════════════════════════════════════════
 # TAB 5 — CORRELATIONS
 # ═══════════════════════════════════════════════════
-with tab5:
-    st.subheader("Feature Correlation Heatmap")
-    corr = df.corr(numeric_only=True)
-
+@st.cache_data
+def plot_correlation_heatmap(_df):
+    corr = _df.corr(numeric_only=True)
     fig = px.imshow(
         corr,
         color_continuous_scale=['#6366F1', '#FAFBFC', '#F43F5E'],
@@ -378,7 +415,12 @@ with tab5:
         margin=dict(l=150, b=150, t=60, r=30),
     )
     fig.update_traces(textfont_size=8)
-    st.plotly_chart(fig, use_container_width=True)
+    return fig
+
+with tab5:
+    st.subheader("Feature Correlation Heatmap")
+    fig_corr = plot_correlation_heatmap(df)
+    st.plotly_chart(fig_corr, use_container_width=True)
 
     st.info(
         "**Key correlations:** MonthlyIncome ↔ JobLevel (0.95), "
@@ -392,87 +434,126 @@ with tab5:
 # TAB 6 — MODEL PERFORMANCE
 # ═══════════════════════════════════════════════════
 with tab6:
-    # Paths relative to this file
-    BACKEND_DIR = os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIR)), 'backend')
-    model, columns = load_models(BACKEND_DIR)
+    @st.cache_resource
+    def load_model_artifacts():
+        """Load model and columns with caching."""
+        # Paths relative to this file
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_dir = os.path.join(os.path.dirname(os.path.dirname(current_dir)), 'backend')
+        
+        model_path = os.path.join(backend_dir, "model.pkl")
+        cols_path = os.path.join(backend_dir, "columns.pkl")
+        
+        if not os.path.exists(model_path) or not os.path.exists(cols_path):
+            return None, None
+            
+        return joblib.load(model_path), joblib.load(cols_path)
 
-    X = pd.get_dummies(df.drop('Attrition', axis=1))
-    X = X.reindex(columns=columns, fill_value=0)
-    y = df['Attrition'].map({'No': 0, 'Yes': 1})
-    y_prob = model.predict_proba(X)[:, 1]
-
-    c1, c2 = st.columns(2)
-
-    # ─── ROC ───
-    with c1:
-        st.subheader("ROC Curve")
+    @st.cache_data
+    def get_performance_data(_model, _columns, _df):
+        """Precompute heavy metrics with caching."""
+        # Drop same-leakage columns as training
+        drop_cols = ['EmployeeCount', 'Over18', 'StandardHours', 'EmployeeNumber']
+        X_df = _df.drop('Attrition', axis=1)
+        X_df = X_df.drop(columns=[c for c in drop_cols if c in X_df.columns], errors='ignore')
+        
+        # Exact same encoding as training (drop_first=True)
+        cat_cols = X_df.select_dtypes(include=['object', 'category']).columns
+        X_encoded = pd.get_dummies(X_df, columns=cat_cols, drop_first=True)
+        
+        # Reindex to match model
+        X_final = X_encoded.reindex(columns=_columns, fill_value=0)
+        
+        y = _df['Attrition'].map({'No': 0, 'Yes': 1})
+        y_prob = _model.predict_proba(X_final)[:, 1]
+        
         fpr, tpr, _ = roc_curve(y, y_prob)
         roc_auc = auc(fpr, tpr)
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=fpr, y=tpr, mode='lines',
-            line=dict(color=NO_COLOR, width=2.5),
-            name=f'AUC = {roc_auc:.3f}', fill='tozeroy',
-            fillcolor='rgba(99,102,241,0.15)'
-        ))
-        fig.add_trace(go.Scatter(
-            x=[0, 1], y=[0, 1], mode='lines',
-            line=dict(color='#D1D5DB', dash='dash', width=1),
-            name='Random', showlegend=False
-        ))
-        style_plotly(fig, f'ROC Curve  (AUC = {roc_auc:.3f})', 420)
-        fig.update_layout(xaxis_title='False Positive Rate', yaxis_title='True Positive Rate')
-        st.plotly_chart(fig, use_container_width=True)
-
-    # ─── Precision-Recall ───
-    with c2:
-        st.subheader("Precision-Recall Curve")
         precision, recall, _ = precision_recall_curve(y, y_prob)
+        
+        return fpr, tpr, roc_auc, precision, recall, X_final
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=recall, y=precision, mode='lines',
-            line=dict(color=YES_COLOR, width=2.5),
-            name='PR Curve', fill='tozeroy',
-            fillcolor='rgba(244,63,94,0.15)'
-        ))
-        style_plotly(fig, 'Precision–Recall Curve', 420)
-        fig.update_layout(xaxis_title='Recall', yaxis_title='Precision')
-        st.plotly_chart(fig, use_container_width=True)
+    try:
+        model, columns = load_model_artifacts()
+        
+        if model is None:
+            st.error("Model artifacts not found in backend directory. Please run the training script first.")
+        else:
+            fpr, tpr, roc_auc, precision, recall, X_final = get_performance_data(model, columns, df)
+
+            c1, c2 = st.columns(2)
+
+            # ─── ROC ───
+            with c1:
+                st.subheader("ROC Curve")
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=fpr, y=tpr, mode='lines',
+                    line=dict(color=NO_COLOR, width=2.5),
+                    name=f'AUC = {roc_auc:.3f}', fill='tozeroy',
+                    fillcolor='rgba(99,102,241,0.15)'
+                ))
+                fig.add_trace(go.Scatter(
+                    x=[0, 1], y=[0, 1], mode='lines',
+                    line=dict(color='#D1D5DB', dash='dash', width=1),
+                    name='Random', showlegend=False
+                ))
+                style_plotly(fig, f'ROC Curve  (AUC = {roc_auc:.3f})', 420)
+                fig.update_layout(xaxis_title='False Positive Rate', yaxis_title='True Positive Rate')
+                st.plotly_chart(fig, use_container_width=True)
+
+            # ─── Precision-Recall ───
+            with c2:
+                st.subheader("Precision-Recall Curve")
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=recall, y=precision, mode='lines',
+                    line=dict(color=YES_COLOR, width=2.5),
+                    name='PR Curve', fill='tozeroy',
+                    fillcolor='rgba(244,63,94,0.15)'
+                ))
+                style_plotly(fig, 'Precision–Recall Curve', 420)
+                fig.update_layout(xaxis_title='Recall', yaxis_title='Precision')
+                st.plotly_chart(fig, use_container_width=True)
+
+            st.divider()
+
+            # ─── Feature Importance (aggregated by original feature) ───
+            st.subheader("Top 15 Feature Importance")
+            # Since model is a Pipeline, we need to access the classifier step for importances
+            importance = model.named_steps['classifier'].feature_importances_
+            original_cols = df.drop('Attrition', axis=1).columns.tolist()
+
+            # Map each one-hot column back to its original feature and sum importances
+            aggregated = {}
+            for col_name, imp in zip(X_final.columns, importance):
+                matched = col_name  # default: keep as-is for numeric features
+                for orig in original_cols:
+                    if col_name == orig or col_name.startswith(orig + '_'):
+                        matched = orig
+                        break
+                aggregated[matched] = aggregated.get(matched, 0) + imp
+
+            # Sort and take top 15
+            sorted_feats = sorted(aggregated.items(), key=lambda x: x[1], reverse=True)[:15]
+            feat_names = [f[0] for f in sorted_feats][::-1]  # reverse for horizontal bar
+            feat_values = [f[1] for f in sorted_feats][::-1]
+
+            fig = px.bar(
+                x=feat_values, y=feat_names, orientation='h',
+                color=feat_values,
+                color_continuous_scale=['#6366F1', '#F43F5E'],
+                labels={'x': 'Importance', 'y': 'Feature'},
+            )
+            style_plotly(fig, 'Top 15 Predictive Features (Aggregated)', 500)
+            fig.update_layout(coloraxis_showscale=False, yaxis_title='', xaxis_title='Feature Importance')
+            st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Error loading model performance metrics: {e}")
+        st.info("Ensure imbalanced-learn is installed and model.pkl is compatible.")
 
     st.divider()
-
-    # ─── Feature Importance (aggregated by original feature) ───
-    st.subheader("Top 15 Feature Importance")
-    # Since model is a Pipeline, we need to access the classifier step for importances
-    importance = model.named_steps['classifier'].feature_importances_
-    original_cols = df.drop('Attrition', axis=1).columns.tolist()
-
-    # Map each one-hot column back to its original feature and sum importances
-    aggregated = {}
-    for col_name, imp in zip(X.columns, importance):
-        matched = col_name  # default: keep as-is for numeric features
-        for orig in original_cols:
-            if col_name == orig or col_name.startswith(orig + '_'):
-                matched = orig
-                break
-        aggregated[matched] = aggregated.get(matched, 0) + imp
-
-    # Sort and take top 15
-    sorted_feats = sorted(aggregated.items(), key=lambda x: x[1], reverse=True)[:15]
-    feat_names = [f[0] for f in sorted_feats][::-1]  # reverse for horizontal bar
-    feat_values = [f[1] for f in sorted_feats][::-1]
-
-    fig = px.bar(
-        x=feat_values, y=feat_names, orientation='h',
-        color=feat_values,
-        color_continuous_scale=['#6366F1', '#F43F5E'],
-        labels={'x': 'Importance', 'y': 'Feature'},
-    )
-    style_plotly(fig, 'Top 15 Predictive Features (Aggregated)', 500)
-    fig.update_layout(coloraxis_showscale=False, yaxis_title='', xaxis_title='Feature Importance')
-    st.plotly_chart(fig, use_container_width=True)
 
     st.info(
         "**Key drivers:** OverTime, income-related variables, and tenure features "
