@@ -14,9 +14,9 @@ async def lifespan(app: FastAPI):
             get_model_artifacts() # High-priority, lightweight
             print("--- Proactive Background Loading Complete (ML Model) ---")
             
-            # Pre-load RAG components (HF embedding model + FAISS index)
-            from services.rag_service import get_vectorstore
-            get_vectorstore()
+            # Pre-load RAG knowledge base (lightweight TF-IDF, ~5MB)
+            from services.rag_service import get_knowledge_index
+            get_knowledge_index()
             print("--- Proactive Background Loading Complete (RAG) ---")
         except Exception as e:
             print(f"Background loading failed (will retry on first request): {e}")

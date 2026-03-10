@@ -1,11 +1,8 @@
 import os
-import warnings
 from dotenv import load_dotenv
-
-# Suppress noisy HuggingFace/LangChain warnings (model is public, no token needed)
-warnings.filterwarnings("ignore", message=".*HuggingFaceEmbeddings.*deprecated.*")
-warnings.filterwarnings("ignore", message=".*unauthenticated.*HF Hub.*")
-os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # Load .env from project root
 # (On Render, this won't matter as we use real Env Vars)
@@ -13,53 +10,46 @@ base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 load_dotenv(os.path.join(base_dir, '.env'))
 
 # Global variables for lazy loading
-_vectorstore = None
-_embeddings = None
-INDEX_PATH = "faiss_index"
+_chunks = None
+_vectorizer = None
+_tfidf_matrix = None
 
-def get_vectorstore():
-    global _vectorstore, _embeddings
-    if _vectorstore is None:
-        from langchain_huggingface import HuggingFaceEmbeddings
-        from langchain_community.vectorstores import FAISS
+def get_knowledge_index():
+    """Build a lightweight TF-IDF index from knowledge.md (uses ~5MB vs ~300MB for HuggingFace)"""
+    global _chunks, _vectorizer, _tfidf_matrix
+    if _chunks is None:
+        print("Initializing RAG knowledge base with TF-IDF...")
         
-        # Check if local index exists
-        _embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        # Load knowledge file
+        with open('knowledge.md', 'r', encoding='utf-8') as f:
+            text = f.read()
+
+        # Split into chunks by section headers and paragraphs
+        raw_chunks = []
+        current_chunk = ""
+        for line in text.split('\n'):
+            current_chunk += line + "\n"
+            # Split on section breaks or when chunk gets large enough
+            if len(current_chunk) > 500 or (line.startswith('---') and len(current_chunk) > 100):
+                if current_chunk.strip():
+                    raw_chunks.append(current_chunk.strip())
+                current_chunk = ""
+        if current_chunk.strip():
+            raw_chunks.append(current_chunk.strip())
         
-        if os.path.exists(INDEX_PATH):
-            print(f"Loading existing RAG index from {INDEX_PATH}...")
-            _vectorstore = FAISS.load_local(
-                INDEX_PATH, 
-                _embeddings, 
-                allow_dangerous_deserialization=True
-            )
-            print("RAG index loaded.")
-        else:
-            print("Index not found. Initializing RAG vectorstore from knowledge.md...")
-            from langchain_text_splitters import CharacterTextSplitter
-            from langchain_core.documents import Document
-            
-            # load knowledge
-            with open('knowledge.md', 'r', encoding='utf-8') as f:
-                text = f.read()
+        _chunks = raw_chunks
+        
+        # Build TF-IDF matrix
+        _vectorizer = TfidfVectorizer(
+            stop_words='english',
+            max_features=5000,
+            ngram_range=(1, 2)  # unigrams + bigrams for better matching
+        )
+        _tfidf_matrix = _vectorizer.fit_transform(_chunks)
+        print(f"RAG knowledge base ready: {len(_chunks)} chunks indexed.")
+    
+    return _chunks, _vectorizer, _tfidf_matrix
 
-            # split into chunks
-            splitter = CharacterTextSplitter(
-                chunk_size=700,
-                chunk_overlap=70
-            )
-
-            chunks = splitter.split_text(text)
-            documents = [Document(page_content=chunk) for chunk in chunks]
-
-            # create vector store
-            _vectorstore = FAISS.from_documents(documents, _embeddings)
-            
-            # Save local index for next time
-            _vectorstore.save_local(INDEX_PATH)
-            print(f"RAG vectorstore initialized and saved to {INDEX_PATH}.")
-            
-    return _vectorstore
 
 def ask_question(query: str, api_key: str = None):
     # Determine API key
@@ -79,12 +69,17 @@ def ask_question(query: str, api_key: str = None):
     except Exception as e:
         return f"Error connecting to Groq API. Please check your API key. Details: {e}"
 
-    # Retrieve relevant chunks from the lazy-loaded vectorstore
-    vector_db = get_vectorstore()
-    docs = vector_db.similarity_search(query, k=3)
-
-    # Combine context
-    context = "\n".join([doc.page_content for doc in docs])
+    # Retrieve relevant chunks using TF-IDF similarity
+    chunks, vectorizer, tfidf_matrix = get_knowledge_index()
+    query_vec = vectorizer.transform([query])
+    similarities = cosine_similarity(query_vec, tfidf_matrix).flatten()
+    
+    # Get top 3 most relevant chunks
+    top_indices = np.argsort(similarities)[-3:][::-1]
+    context = "\n".join([chunks[i] for i in top_indices if similarities[i] > 0.05])
+    
+    if not context:
+        context = "\n".join([chunks[i] for i in top_indices])
 
     # prompt
     prompt = f"""You are an expert HR analytics assistant for an employee attrition prediction system.
