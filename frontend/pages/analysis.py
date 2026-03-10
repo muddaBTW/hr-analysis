@@ -58,12 +58,22 @@ def style_plotly(fig, title='', height=500):
 # ─── Load Data ───
 import os
 
+@st.cache_data
+def load_data(path):
+    return pd.read_csv(path)
+
+@st.cache_resource
+def load_models(backend_dir):
+    model = joblib.load(os.path.join(backend_dir, "model.pkl"))
+    columns = joblib.load(os.path.join(backend_dir, "columns.pkl"))
+    return model, columns
+
 # Use relative path for cloud deployment
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Data is in the root (2 levels up)
 DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIR)), 'WA_Fn-UseC_-HR-Employee-Attrition.csv')
 
-df = pd.read_csv(DATA_PATH)
+df = load_data(DATA_PATH)
 
 # ─── KPIs ───
 col1, col2, col3, col4 = st.columns(4)
@@ -384,8 +394,7 @@ with tab5:
 with tab6:
     # Paths relative to this file
     BACKEND_DIR = os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIR)), 'backend')
-    model = joblib.load(os.path.join(BACKEND_DIR, "model.pkl"))
-    columns = joblib.load(os.path.join(BACKEND_DIR, "columns.pkl"))
+    model, columns = load_models(BACKEND_DIR)
 
     X = pd.get_dummies(df.drop('Attrition', axis=1))
     X = X.reindex(columns=columns, fill_value=0)
