@@ -391,7 +391,9 @@ with tab4:
 # TAB 5 — CORRELATIONS
 # ═══════════════════════════════════════════════════
 def plot_correlation_heatmap(_df):
-    corr = _df.corr(numeric_only=True)
+    numeric_df = _df.select_dtypes(include=[np.number])
+    numeric_df = numeric_df.loc[:, numeric_df.nunique() > 1]
+    corr = numeric_df.corr()
     fig = px.imshow(
         corr,
         color_continuous_scale=['#6366F1', '#FAFBFC', '#F43F5E'],
