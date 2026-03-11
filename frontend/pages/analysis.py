@@ -90,7 +90,6 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 # ═══════════════════════════════════════════════════
 # TAB 1 — OVERVIEW
 # ═══════════════════════════════════════════════════
-@st.cache_data
 def plot_attrition_pie(_df, _map):
     counts = _df['Attrition'].value_counts()
     fig = px.pie(
@@ -146,7 +145,6 @@ with tab1:
 # ═══════════════════════════════════════════════════
 # TAB 2 — FEATURE ANALYSIS
 # ═══════════════════════════════════════════════════
-@st.cache_data
 def plot_categorical_features(_df, _no_color, _yes_color):
     cat_cols = _df.select_dtypes(include=['object', 'category']).columns
     fig, axes = plt.subplots(3, 3, figsize=(22, 16))
@@ -166,7 +164,6 @@ def plot_categorical_features(_df, _no_color, _yes_color):
     plt.tight_layout(pad=3.0)
     return fig
 
-@st.cache_data
 def plot_numerical_features(_df, _map):
     num_cols = [
         'Age', 'DailyRate', 'DistanceFromHome', 'HourlyRate',
@@ -220,7 +217,6 @@ with tab2:
 with tab3:
     c1, c2 = st.columns(2)
 
-@st.cache_data
 def plot_dept_attrition(_df, _colors):
     dept_rate = (
         _df.groupby('Department')['Attrition']
@@ -240,7 +236,6 @@ def plot_dept_attrition(_df, _colors):
     fig.update_layout(showlegend=False, yaxis_title='Attrition Rate (%)', xaxis_title='')
     return fig
 
-@st.cache_data
 def plot_role_attrition(_df):
     role_rate = (
         _df.groupby('JobRole')['Attrition']
@@ -296,7 +291,6 @@ with tab3:
 with tab4:
     c1, c2 = st.columns(2)
 
-@st.cache_data
 def plot_wlb_attrition(_df, _colors):
     wlb = (
         _df.groupby('WorkLifeBalance')['Attrition']
@@ -316,7 +310,6 @@ def plot_wlb_attrition(_df, _colors):
     fig.update_layout(showlegend=False, yaxis_title='Attrition Rate (%)', xaxis_title='Balance Level')
     return fig
 
-@st.cache_data
 def plot_satisfaction_attrition(_df, _colors):
     js = (
         _df.groupby('JobSatisfaction')['Attrition']
@@ -336,7 +329,6 @@ def plot_satisfaction_attrition(_df, _colors):
     fig.update_layout(showlegend=False, yaxis_title='Attrition Rate (%)', xaxis_title='Satisfaction Level')
     return fig
 
-@st.cache_data
 def plot_income_scatter(_df, _map):
     fig = px.scatter(
         _df, x='YearsAtCompany', y='MonthlyIncome',
@@ -348,7 +340,6 @@ def plot_income_scatter(_df, _map):
     style_plotly(fig, 'Monthly Income vs Tenure (by Attrition)', 450)
     return fig
 
-@st.cache_data
 def plot_income_violin(_df, _map):
     fig = px.violin(
         _df, x='Attrition', y='MonthlyIncome',
@@ -399,7 +390,6 @@ with tab4:
 # ═══════════════════════════════════════════════════
 # TAB 5 — CORRELATIONS
 # ═══════════════════════════════════════════════════
-@st.cache_data
 def plot_correlation_heatmap(_df):
     corr = _df.corr(numeric_only=True)
     fig = px.imshow(
